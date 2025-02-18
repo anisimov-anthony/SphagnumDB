@@ -7,8 +7,8 @@
 
 
 ## 🌾 Terminology  
-- **Seeds** → Individual nodes that store and manage data.  
-- **Fields** → Sharded partitions of the database, cultivated across multiple seeds.  
+- **Sprouts** → Individual nodes that store and manage data.  
+- **Fields** → Sharded partitions of the database, cultivated across multiple sprouts.  
 - **Paths** → P2P connections forming a dynamic, self-sustaining network. Don’t get lost!  
 
 
@@ -18,7 +18,6 @@
 - 🌍 **Sharding and replication** for seamless scalability.  
 - 🌱 **Lightweight and efficient**, ideal for low-power environments.  
 - 🔒 **Merkle Tree verification** to maintain data integrity.  
-- ⚡ **Optimized query routing** across the distributed network.  
 
 ## 📦 Installation  
 ```sh
