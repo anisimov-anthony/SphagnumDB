@@ -1,7 +1,15 @@
 [package]
-name = "sprout-db"
+name = "sproutdb"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
 
+[lib]
+name = "sproutdb"
+path = "src/lib.rs"
+
 [dependencies]
+libp2p = { version = "0.54", features = ["identify", "noise", "ping", "tcp", "tokio", "yamux", "request-response"] }
+futures = "0.3.30"
+tokio = { version = "1.37.0", features = ["full"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
