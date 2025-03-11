@@ -1,66 +1,107 @@
-// SproutDB
-// © 2025 Anton Anisimov & Contributors
-// Licensed under the MIT License
-
 use std::error::Error;
 use std::sync::Arc;
 use libp2p::Multiaddr;
-use sproutdb::core::sprout::Sprout;
-use tokio::time::{sleep, Duration};
+use clap::{Arg, Command}; // Используем `Command` вместо `App`
 use tokio::sync::Mutex;
+use tokio::io::{self, AsyncBufReadExt, BufReader};
+use sproutdb::core::{
+    sprout::Sprout, 
+    req_resp_codec::{Command as SproutCommand} // Переименуем, чтобы избежать конфликта имен
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let mut sp_1 = Sprout::new()?;
-    let mut sp_2 = Sprout::new()?;
+    let matches = Command::new("SproutDB Node")
+        .arg(Arg::new("addr") // Используем `Arg::new`
+            .long("addr")
+            .value_name("ADDRESS") // Указываем имя значения
+            .help("Address of another node to connect to"))
+        .get_matches();
 
-    println!("PeerID of sp_1: {}", sp_1.peer_id()?);
-    println!("PeerID of sp_2: {}", sp_2.peer_id()?);
+    let mut sprout = Sprout::new()?;
 
-    let listen_addr_2: Multiaddr = "/ip4/127.0.0.1/tcp/4002".parse()?;
-    sp_2.listen_on(listen_addr_2)?;
+    // Выводим PeerID текущей ноды
+    println!("PeerID: {}", sprout.peer_id()?);
 
-    sp_1.dial("/ip4/127.0.0.1/tcp/4002")?;
+    // Запускаем ноду на случайном порту
+    let listen_addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse()?;
+    sprout.listen_on(listen_addr.clone())?;
 
-    let peer_id_2 = sp_2.peer_id()?;
+    // Выводим адрес, на котором нода слушает
+    if let Some(addr) = sprout.listeners().next() { // Добавьте метод `listeners` в `Sprout`
+        println!("Node is listening on: {}", addr);
+    }
 
-    let sp_1_clone = Arc::new(Mutex::new(sp_1));
-    
-    let handle_events_1 = {
-        let sp_1_clone = Arc::clone(&sp_1_clone);
+    let _ = if let Some(addr) = matches.get_one::<String>("addr") {
+        sprout.dial(addr)?;
+        println!("Connected to node at: {}", addr);
+        
+    };
+
+    let sprout_arc = Arc::new(Mutex::new(sprout));
+
+    // Обработка событий
+    let handle_events = {
+        let sprout_arc = Arc::clone(&sprout_arc);
         tokio::spawn(async move {
             loop {
-                let mut sp_1 = sp_1_clone.lock().await;
-                if let Err(e) = sp_1.handle_event().await {
-                    eprintln!("Error in sp_1: {}", e);
+                let mut sprout = sprout_arc.lock().await;
+                if let Err(e) = sprout.handle_event().await {
+                    eprintln!("Error handling event: {}", e);
                 }
             }
         })
     };
 
-    let handle_events_2 = tokio::spawn(async move {
-        loop {
-            if let Err(e) = sp_2.handle_event().await {
-                eprintln!("Error in sp_2: {}", e);
-            }
-        }
-    });
-
-    let handle_greet_request = {
-        let sp_1_clone = Arc::clone(&sp_1_clone);
+    // Чтение команд из терминала
+    let handle_input = {
+        let sprout_arc = Arc::clone(&sprout_arc);
         tokio::spawn(async move {
-            loop {
-                sleep(Duration::from_secs(3)).await; 
-                let mut sp_1 = sp_1_clone.lock().await;
-                match sp_1.send_request_to_sprout(peer_id_2, "Hello from sp_1".to_string()) {
-                    Ok(_) => println!("Greeting request sent from sp_1 to sp_2"),
-                    Err(e) => eprintln!("Failed to send greeting request: {}", e),
+            let stdin = io::stdin();
+            let mut reader = BufReader::new(stdin).lines();
+
+            while let Some(line) = reader.next_line().await.unwrap_or(None) {
+                let mut parts = line.split_whitespace();
+                if let Some(command) = parts.next() {
+                    match command.to_lowercase().as_str() {
+                        "get" => {
+                            let mut sprout = sprout_arc.lock().await;
+                            if let Some(peer_id) = sprout.connected_peers.iter().next().copied() {
+                                
+                                match sprout.send_request_to_sprout(peer_id, SproutCommand::Get, "".to_string()) {
+                                    Ok(_) => println!("Get request sent"),
+                                    Err(e) => eprintln!("Failed to send Get request: {}", e),
+                                }
+                            } else {
+                                eprintln!("Not connected to any node.");
+                            }
+                        }
+                        "set" => {
+                            if let Some(value) = parts.next() {
+                                let mut sprout = sprout_arc.lock().await;
+                                if let Some(peer_id) = sprout.connected_peers.iter().next().copied() {
+                                    
+                                    match sprout.send_request_to_sprout(peer_id, SproutCommand::Set, value.to_string()) {
+                                        Ok(_) => println!("Set request sent with value: {}", value),
+                                        Err(e) => eprintln!("Failed to send Set request: {}", e),
+                                    }
+                                } else {
+                                    eprintln!("Not connected to any node.");
+                                }
+                            } else {
+                                eprintln!("Usage: set <value>");
+                            }
+                        }
+                        _ => {
+                            eprintln!("Unknown command: {}", command);
+                        }
+                    }
                 }
             }
         })
     };
 
-    let _ = tokio::join!(handle_events_1, handle_events_2, handle_greet_request);
+    let _ = tokio::join!(handle_events, handle_input);
 
     Ok(())
 }

@@ -13,10 +13,12 @@ use libp2p::{
     StreamProtocol,
 };
 
+use std::collections::HashSet;
+
 use super::{
     data_storage::DataStorage, 
     passport::Passport,
-    req_resp_codec::{SproutRequest, SproutResponse},
+    req_resp_codec::{Command, SproutRequest, SproutResponse},
     sprout_behaviour::{SproutBehaviour, SproutBehaviourEvent}
 };
 
@@ -26,7 +28,8 @@ use super::{
 pub struct Sprout {
     data_storage: DataStorage,
     passport: Passport,
-    swarm: Swarm<SproutBehaviour>,
+    pub swarm: Swarm<SproutBehaviour>, // todo remove pub
+    pub connected_peers: HashSet<PeerId>
 }
 
 impl Sprout {
@@ -50,6 +53,7 @@ impl Sprout {
             data_storage: DataStorage::new()?,
             passport: Passport::new()?,
             swarm,
+            connected_peers: HashSet::new(),
         })
     }
 
@@ -72,6 +76,10 @@ impl Sprout {
     pub fn listen_on(&mut self, listen_addr: Multiaddr) -> Result<(), Box<dyn Error>> {
         self.swarm.listen_on(listen_addr)?;
         Ok(())
+    }
+
+    pub fn listeners(&self) -> impl Iterator<Item = &Multiaddr> {
+        self.swarm.listeners()
     }
 
     pub fn peer_id(&self) -> Result<PeerId, Box<dyn Error>> {
@@ -97,6 +105,7 @@ impl Sprout {
                 num_established, 
                 concurrent_dial_errors, 
                 established_in } => {
+                    self.connected_peers.insert(peer_id); // todo: avoid sets
                     if endpoint.is_dialer() {
                         println!(
                             "Node {} successfully dialed {} (connection_id: {:?})", 
@@ -132,6 +141,7 @@ impl Sprout {
                 endpoint, 
                 num_established, 
                 cause } => {
+                    self.connected_peers.remove(&peer_id); // todo: error handling wrap
                     println!(
                         "Node {} closed connection with {} (connection_id: {:?}, endpoint: {:?}, num_established: {})", 
                         self.swarm.local_peer_id(), peer_id, connection_id, endpoint, num_established
@@ -253,8 +263,33 @@ impl Sprout {
                                         );
 
                                         // The simplest option is to echo responses. In the future, it will be possible to make more interesting behavior.
-                                        let response = SproutResponse {
-                                            payload : format!("Response to the request '{}'", request.payload ),
+                                        let response = match request.command {
+                                            Command::Get => {
+                                                match self.data_storage.get_number() {
+                                                    Ok(number) => SproutResponse {
+                                                        payload: format!("Result of Get: {}", number),
+                                                    },
+                                                    Err(e) => SproutResponse {
+                                                        payload: format!("Error retrieving result of Get: {:?}", e),
+                                                    },
+                                                }
+                                            }
+                                            Command::Set => {
+                                                match request.payload.parse::<i32>() {
+                                                    Ok(setted_number) => match self.data_storage.set_number(setted_number) {
+                                                        Ok(_) => SproutResponse {
+                                                            payload: format!("Value set successfully: {}", setted_number),
+                                                        },
+                                                        Err(e) => SproutResponse {
+                                                            payload: format!("Error setting field value: {:?}", e),
+                                                        },
+                                                    },
+                                                    Err(e) => SproutResponse {
+                                                        payload: format!("Invalid number format: {:?}", e),
+                                                    },
+                                                }
+                                            }
+                                            // todo
                                         };
                                         self.swarm
                                             .behaviour_mut()
@@ -318,8 +353,8 @@ impl Sprout {
         Ok(())
     }
 
-    pub fn send_request_to_sprout(&mut self, peer_id: PeerId, payload : String) -> Result<OutboundRequestId, Box<dyn Error>> {
-        let request = SproutRequest { payload  };
+    pub fn send_request_to_sprout(&mut self, peer_id: PeerId, command: Command, payload : String) -> Result<OutboundRequestId, Box<dyn Error>> {
+        let request = SproutRequest { command, payload };
         let request_id = self.swarm
             .behaviour_mut()
             .request_response
