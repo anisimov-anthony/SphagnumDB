@@ -220,21 +220,20 @@ impl Sprout {
                 Ok(())
             }
             SwarmEvent::Behaviour(SproutBehaviourEvent::Ping(event)) => {
-                match event {
-                    ping::Event { peer, result, .. } => match result {
-                        Ok(rtt) => println!(
-                            "Node {} received ping from {}: {:?}",
-                            self.swarm.local_peer_id(),
-                            peer,
-                            rtt
-                        ),
-                        Err(e) => println!(
-                            "Node {} failed to ping {}: {:?}",
-                            self.swarm.local_peer_id(),
-                            peer,
-                            e
-                        ),
-                    },
+                let ping::Event { peer, result, .. } = event; // Исправлено
+                match result {
+                    Ok(rtt) => println!(
+                        "Node {} received ping from {}: {:?}",
+                        self.swarm.local_peer_id(),
+                        peer,
+                        rtt
+                    ),
+                    Err(e) => println!(
+                        "Node {} failed to ping {}: {:?}",
+                        self.swarm.local_peer_id(),
+                        peer,
+                        e
+                    ),
                 }
                 Ok(())
             }
