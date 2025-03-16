@@ -7,19 +7,19 @@ use std::{error::Error, time::Duration};
 use futures::prelude::*;
 use libp2p::{
     noise, ping,
+    request_response::{self, OutboundRequestId, ProtocolSupport},
     swarm::{Swarm, SwarmEvent},
-    tcp, yamux, Multiaddr, PeerId,
-    request_response::{self, ProtocolSupport, OutboundRequestId},
-    StreamProtocol,
+    tcp, yamux, Multiaddr, PeerId, StreamProtocol,
 };
 
 use std::collections::HashSet;
 
 use super::{
-    data_storage::DataStorage, 
+    commands::{generic::GenericCommand, string::StringCommand, Command},
+    data_storage::DataStorage,
     passport::Passport,
-    req_resp_codec::{Command, SproutRequest, SproutResponse},
-    sprout_behaviour::{SproutBehaviour, SproutBehaviourEvent}
+    req_resp_codec::{SproutRequest, SproutResponse},
+    sprout_behaviour::{SproutBehaviour, SproutBehaviourEvent},
 };
 
 /// Reminder: in this project, the nodes are called sprouts. Thus, this structure is a node
@@ -29,7 +29,7 @@ pub struct Sprout {
     data_storage: DataStorage,
     passport: Passport,
     pub swarm: Swarm<SproutBehaviour>, // todo remove pub
-    pub connected_peers: HashSet<PeerId>
+    pub connected_peers: HashSet<PeerId>,
 }
 
 impl Sprout {
@@ -61,12 +61,12 @@ impl Sprout {
         let ping = ping::Behaviour::default();
         let request_response = request_response::json::Behaviour::new(
             [(
-                StreamProtocol::new("/greet/1.0.0"),
+                StreamProtocol::new("/sproutdb/1.0.0"),
                 ProtocolSupport::Full,
             )],
             request_response::Config::default(),
         );
-        
+
         Ok(SproutBehaviour {
             ping,
             request_response,
@@ -96,252 +96,329 @@ impl Sprout {
 
     pub async fn handle_event(&mut self) -> Result<(), Box<dyn Error>> {
         match self.swarm.select_next_some().await {
-
-            // Events for SwarmEvent are handled here.
-            SwarmEvent::ConnectionEstablished { 
-                peer_id, 
-                connection_id, 
-                endpoint, 
-                num_established, 
-                concurrent_dial_errors, 
-                established_in } => {
-                    self.connected_peers.insert(peer_id); // todo: avoid sets
-                    if endpoint.is_dialer() {
-                        println!(
-                            "Node {} successfully dialed {} (connection_id: {:?})", 
-                            self.swarm.local_peer_id(), peer_id, connection_id
-                        );
-                    } else {
-                        println!(
-                            "Node {} accepted connection from {} (connection_id: {:?}, num_established: {}, established_in: {:?})", 
-                            self.swarm.local_peer_id(), peer_id, connection_id, num_established, established_in
-                        );
-                    }
-
-                    if let Some(errors) = concurrent_dial_errors {
-                        for (addr, err) in errors {
-                            println!(
-                                "Dial attempt to {:?} failed with error: {:?}", 
-                                addr, err
-                            );
-                        }
-                    }
+            SwarmEvent::ConnectionEstablished {
+                peer_id,
+                connection_id,
+                endpoint,
+                num_established,
+                concurrent_dial_errors,
+                established_in,
+            } => {
+                self.connected_peers.insert(peer_id);
+                if endpoint.is_dialer() {
                     println!(
-                        "Total number of established connections with peer {}: {}", 
-                        peer_id, num_established
+                        "Node {} successfully dialed {} (connection_id: {:?})",
+                        self.swarm.local_peer_id(),
+                        peer_id,
+                        connection_id
                     );
-
-                    println!("Connection established in: {:?}", established_in);
-
-                    Ok(())
+                } else {
+                    println!("Node {} accepted connection from {} (connection_id: {:?}, num_established: {}, established_in: {:?})", 
+                        self.swarm.local_peer_id(), peer_id, connection_id, num_established, established_in);
                 }
-            SwarmEvent::ConnectionClosed { 
-                peer_id, 
-                connection_id, 
-                endpoint, 
-                num_established, 
-                cause } => {
-                    self.connected_peers.remove(&peer_id); // todo: error handling wrap
-                    println!(
-                        "Node {} closed connection with {} (connection_id: {:?}, endpoint: {:?}, num_established: {})", 
-                        self.swarm.local_peer_id(), peer_id, connection_id, endpoint, num_established
-                    );
-                    if let Some(err) = cause {
-                        println!("Cause of disconnection: {:?}", err);
+                if let Some(errors) = concurrent_dial_errors {
+                    for (addr, err) in errors {
+                        println!("Dial attempt to {:?} failed with error: {:?}", addr, err);
                     }
-                    Ok(())
                 }
-            SwarmEvent::NewListenAddr { 
-                listener_id, 
-                address } => {
-                    println!(
-                        "Node {} is now listening on {:?} with listener ID: {:?}", 
-                        self.swarm.local_peer_id(), address, listener_id
-                    );
+                println!(
+                    "Total number of established connections with peer {}: {}",
+                    peer_id, num_established
+                );
+                println!("Connection established in: {:?}", established_in);
                 Ok(())
             }
-            SwarmEvent::ListenerClosed { 
-                listener_id, 
-                addresses, 
-                reason } => {
-                    println!(
-                        "Listener {} closed. Addresses: {:?}", 
-                        listener_id, addresses
-                    );
+            SwarmEvent::ConnectionClosed {
+                peer_id,
+                connection_id,
+                endpoint,
+                num_established,
+                cause,
+            } => {
+                self.connected_peers.remove(&peer_id);
+                println!("Node {} closed connection with {} (connection_id: {:?}, endpoint: {:?}, num_established: {})", 
+                    self.swarm.local_peer_id(), peer_id, connection_id, endpoint, num_established);
+                if let Some(err) = cause {
+                    println!("Cause of disconnection: {:?}", err);
+                }
+                Ok(())
+            }
+            SwarmEvent::NewListenAddr {
+                listener_id,
+                address,
+            } => {
+                println!(
+                    "Node {} is now listening on {:?} with listener ID: {:?}",
+                    self.swarm.local_peer_id(),
+                    address,
+                    listener_id
+                );
+                Ok(())
+            }
+            SwarmEvent::ListenerClosed {
+                listener_id,
+                addresses,
+                reason,
+            } => {
+                println!(
+                    "Listener {} closed. Addresses: {:?}",
+                    listener_id, addresses
+                );
                 match reason {
                     Ok(_) => println!("Listener closed successfully."),
                     Err(err) => println!("Listener closed with error: {:?}", err),
                 }
                 Ok(())
             }
-            SwarmEvent::ListenerError { 
-                listener_id, 
-                error } => {
-                    println!(
-                        "Listener {} encountered an error: {:?}", 
-                        listener_id, error
-                    );
+            SwarmEvent::ListenerError { listener_id, error } => {
+                println!("Listener {} encountered an error: {:?}", listener_id, error);
                 Ok(())
             }
-            SwarmEvent::Dialing { 
-                peer_id, 
-                connection_id } => {
-                    println!(
-                        "Node {} is dialing peer {:?} (connection_id: {:?})", 
-                        self.swarm.local_peer_id(), peer_id, connection_id
-                    );
+            SwarmEvent::Dialing {
+                peer_id,
+                connection_id,
+            } => {
+                println!(
+                    "Node {} is dialing peer {:?} (connection_id: {:?})",
+                    self.swarm.local_peer_id(),
+                    peer_id,
+                    connection_id
+                );
                 Ok(())
             }
-            SwarmEvent::NewExternalAddrCandidate { 
-                address } => {
-                    println!(
-                        "Node {} discovered a new external address: {:?}", 
-                        self.swarm.local_peer_id(), address
-                    );
+            SwarmEvent::NewExternalAddrCandidate { address } => {
+                println!(
+                    "Node {} discovered a new external address: {:?}",
+                    self.swarm.local_peer_id(),
+                    address
+                );
                 Ok(())
             }
-            SwarmEvent::ExternalAddrConfirmed { 
-                address } => {
-                    println!(
-                        "Node {} confirmed external address: {:?}", 
-                        self.swarm.local_peer_id(), address
-                    );
+            SwarmEvent::ExternalAddrConfirmed { address } => {
+                println!(
+                    "Node {} confirmed external address: {:?}",
+                    self.swarm.local_peer_id(),
+                    address
+                );
                 Ok(())
             }
-            SwarmEvent::ExternalAddrExpired { 
-                address } => {
-                    println!(
-                        "Node {} detected the expiration of external address: {:?}", 
-                        self.swarm.local_peer_id(), address
-                    );
+            SwarmEvent::ExternalAddrExpired { address } => {
+                println!(
+                    "Node {} detected the expiration of external address: {:?}",
+                    self.swarm.local_peer_id(),
+                    address
+                );
                 Ok(())
             }
-            SwarmEvent::NewExternalAddrOfPeer { 
-                peer_id, 
-                address } => {
-                    println!(
-                        "Node {} discovered a new address for peer {:?}: {:?}", 
-                        self.swarm.local_peer_id(), peer_id, address
-                    );
+            SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
+                println!(
+                    "Node {} discovered a new address for peer {:?}: {:?}",
+                    self.swarm.local_peer_id(),
+                    peer_id,
+                    address
+                );
                 Ok(())
             }
-
-            // All possible events (there is only one event) for SproutBehaviourEvent::Ping::Event are handled here.
             SwarmEvent::Behaviour(SproutBehaviourEvent::Ping(event)) => {
                 match event {
-                    ping::Event { peer, result, .. } => {
-                        match result {
-                            Ok(rtt) => println!(
-                                "Node {} received ping from {}: {:?}", self.swarm.local_peer_id(), 
-                                peer, rtt
-                            ),
-                            Err(e) => println!(
-                                "Node {} failed to ping {}: {:?}", 
-                                self.swarm.local_peer_id(), peer, e
-                            ),
+                    ping::Event { peer, result, .. } => match result {
+                        Ok(rtt) => println!(
+                            "Node {} received ping from {}: {:?}",
+                            self.swarm.local_peer_id(),
+                            peer,
+                            rtt
+                        ),
+                        Err(e) => println!(
+                            "Node {} failed to ping {}: {:?}",
+                            self.swarm.local_peer_id(),
+                            peer,
+                            e
+                        ),
+                    },
+                }
+                Ok(())
+            }
+            SwarmEvent::Behaviour(SproutBehaviourEvent::RequestResponse(event)) => {
+                match event {
+                    request_response::Event::Message {
+                        peer,
+                        connection_id,
+                        message,
+                    } => match message {
+                        request_response::Message::Request {
+                            request_id,
+                            request,
+                            channel,
+                        } => {
+                            println!("Node {} received request from {} (connection: {:?}, request_id: {:?}): {:?}", 
+                                    self.swarm.local_peer_id(), peer, connection_id, request_id, request);
+
+                            let response = match request.command {
+                                Command::String(StringCommand::Set { key, value }) => {
+                                    match self.data_storage.handle_command(Command::String(
+                                        StringCommand::Set { key, value },
+                                    )) {
+                                        Ok(result) => {
+                                            if let Some(ok) = result.downcast_ref::<String>() {
+                                                if ok.as_str() == "OK" {
+                                                    SproutResponse {
+                                                        payload: "OK".to_string(),
+                                                    }
+                                                } else {
+                                                    SproutResponse {
+                                                        payload: "Unexpected response".to_string(),
+                                                    }
+                                                }
+                                            } else {
+                                                SproutResponse {
+                                                    payload: "Unexpected response".to_string(),
+                                                }
+                                            }
+                                        }
+                                        Err(e) => SproutResponse {
+                                            payload: format!("Error setting value: {:?}", e),
+                                        },
+                                    }
+                                }
+                                Command::String(StringCommand::Get { key }) => {
+                                    match self
+                                        .data_storage
+                                        .handle_command(Command::String(StringCommand::Get { key }))
+                                    {
+                                        Ok(result) => {
+                                            if let Some(value) =
+                                                result.downcast_ref::<Option<String>>()
+                                            {
+                                                SproutResponse {
+                                                    payload: value
+                                                        .clone()
+                                                        .unwrap_or("nil".to_string()),
+                                                }
+                                            } else {
+                                                SproutResponse {
+                                                    payload: "Unexpected response".to_string(),
+                                                }
+                                            }
+                                        }
+                                        Err(e) => SproutResponse {
+                                            payload: format!("Error getting value: {:?}", e),
+                                        },
+                                    }
+                                }
+                                Command::String(StringCommand::Append { key, value }) => {
+                                    match self.data_storage.handle_command(Command::String(
+                                        StringCommand::Append { key, value },
+                                    )) {
+                                        Ok(result) => {
+                                            if let Some(len) = result.downcast_ref::<u64>() {
+                                                SproutResponse {
+                                                    payload: len.to_string(),
+                                                }
+                                            } else {
+                                                SproutResponse {
+                                                    payload: "Unexpected response".to_string(),
+                                                }
+                                            }
+                                        }
+                                        Err(e) => SproutResponse {
+                                            payload: format!("Error appending value: {:?}", e),
+                                        },
+                                    }
+                                }
+                                Command::Generic(GenericCommand::Exists { keys }) => {
+                                    match self.data_storage.handle_command(Command::Generic(
+                                        GenericCommand::Exists { keys },
+                                    )) {
+                                        Ok(result) => {
+                                            if let Some(count) = result.downcast_ref::<u64>() {
+                                                SproutResponse {
+                                                    payload: count.to_string(),
+                                                }
+                                            } else {
+                                                SproutResponse {
+                                                    payload: "Unexpected response".to_string(),
+                                                }
+                                            }
+                                        }
+                                        Err(e) => SproutResponse {
+                                            payload: format!("Error checking existence: {:?}", e),
+                                        },
+                                    }
+                                }
+                                Command::Generic(GenericCommand::Delete { keys }) => {
+                                    match self.data_storage.handle_command(Command::Generic(
+                                        GenericCommand::Delete { keys },
+                                    )) {
+                                        Ok(result) => {
+                                            if let Some(count) = result.downcast_ref::<u64>() {
+                                                SproutResponse {
+                                                    payload: count.to_string(),
+                                                }
+                                            } else {
+                                                SproutResponse {
+                                                    payload: "Unexpected response".to_string(),
+                                                }
+                                            }
+                                        }
+                                        Err(e) => SproutResponse {
+                                            payload: format!("Error deleting keys: {:?}", e),
+                                        },
+                                    }
+                                }
+                            };
+                            self.swarm
+                                .behaviour_mut()
+                                .request_response
+                                .send_response(channel, response)
+                                .unwrap();
                         }
+                        request_response::Message::Response {
+                            request_id,
+                            response,
+                        } => {
+                            println!("Node {} received response from {} (connection: {:?}, request_id: {:?}): {:?}", 
+                                    self.swarm.local_peer_id(), peer, connection_id, request_id, response);
+                        }
+                    },
+                    request_response::Event::OutboundFailure {
+                        peer,
+                        connection_id,
+                        request_id,
+                        error,
+                    } => {
+                        println!("Node {} outbound request to {} (connection: {:?}, request: {:?}) failed: {:?}", 
+                            self.swarm.local_peer_id(), peer, connection_id, request_id, error);
+                    }
+                    request_response::Event::InboundFailure {
+                        peer,
+                        connection_id,
+                        request_id,
+                        error,
+                    } => {
+                        println!("Node {} inbound request from {} (connection: {:?}, request: {:?}) failed: {:?}", 
+                            self.swarm.local_peer_id(), peer, connection_id, request_id, error);
+                    }
+                    request_response::Event::ResponseSent {
+                        peer,
+                        connection_id,
+                        request_id,
+                    } => {
+                        println!(
+                            "Node {} sent response to {} (connection: {:?}, request: {:?})",
+                            self.swarm.local_peer_id(),
+                            peer,
+                            connection_id,
+                            request_id
+                        );
                     }
                 }
                 Ok(())
             }
-
-            // All possible events for request_response::Event are handled here.
-            SwarmEvent::Behaviour(SproutBehaviourEvent::RequestResponse(event)) => {
-                match event {
-                    request_response::Event::Message { 
-                        peer, 
-                        connection_id, 
-                        message } => {
-                            match message {
-                                request_response::Message::Request { 
-                                    request_id,
-                                    request, 
-                                    channel } => {
-                                        println!(
-                                            "Node {} received request from {} (connection: {:?}, request_id: {:?}): {:?}",
-                                            self.swarm.local_peer_id(), peer, connection_id, request_id, request
-                                        );
-
-                                        // The simplest option is to echo responses. In the future, it will be possible to make more interesting behavior.
-                                        let response = match request.command {
-                                            Command::Get => {
-                                                match self.data_storage.get_number() {
-                                                    Ok(number) => SproutResponse {
-                                                        payload: format!("Result of Get: {}", number),
-                                                    },
-                                                    Err(e) => SproutResponse {
-                                                        payload: format!("Error retrieving result of Get: {:?}", e),
-                                                    },
-                                                }
-                                            }
-                                            Command::Set => {
-                                                match request.payload.parse::<i32>() {
-                                                    Ok(setted_number) => match self.data_storage.set_number(setted_number) {
-                                                        Ok(_) => SproutResponse {
-                                                            payload: format!("Value set successfully: {}", setted_number),
-                                                        },
-                                                        Err(e) => SproutResponse {
-                                                            payload: format!("Error setting field value: {:?}", e),
-                                                        },
-                                                    },
-                                                    Err(e) => SproutResponse {
-                                                        payload: format!("Invalid number format: {:?}", e),
-                                                    },
-                                                }
-                                            }
-                                            // todo
-                                        };
-                                        self.swarm
-                                            .behaviour_mut()
-                                            .request_response
-                                            .send_response(channel, response)
-                                            .unwrap();
-                                    }
-                                request_response::Message::Response { 
-                                    request_id,
-                                    response } => {
-                                        println!(
-                                            "Node {} received response from {} (connection: {:?}, request_id: {:?}): {:?}",
-                                            self.swarm.local_peer_id(), peer, connection_id, request_id, response
-                                        );
-                                    }
-                                }
-                            }
-                    request_response::Event::OutboundFailure { 
-                        peer, 
-                        connection_id, 
-                        request_id, 
-                        error } => {
-                            println!(
-                                "Node {} outbound request to {} (connection: {:?}, request: {:?}) failed: {:?}",
-                                self.swarm.local_peer_id(), peer, connection_id, request_id, error
-                            );
-                        }
-                    request_response::Event::InboundFailure { 
-                        peer, 
-                        connection_id, 
-                        request_id, 
-                        error } => {
-                            println!(
-                                "Node {} inbound request from {} (connection: {:?}, request: {:?}) failed: {:?}",
-                                self.swarm.local_peer_id(), peer, connection_id, request_id, error
-                            );
-                        }
-                    request_response::Event::ResponseSent { 
-                        peer, 
-                        connection_id, 
-                        request_id } => {
-                            println!(
-                                "Node {} sent response to {} (connection: {:?}, request: {:?})",
-                                self.swarm.local_peer_id(), peer, connection_id, request_id
-                            );
-                        }
-                }
-                Ok(())
-            }
-
             _ => {
-                println!("Unhandled event for SwarmEvent: {:?}", self.swarm.select_next_some().await);
+                println!(
+                    "Unhandled event for SwarmEvent: {:?}",
+                    self.swarm.select_next_some().await
+                );
                 Ok(())
             }
         }
@@ -353,9 +430,17 @@ impl Sprout {
         Ok(())
     }
 
-    pub fn send_request_to_sprout(&mut self, peer_id: PeerId, command: Command, payload : String) -> Result<OutboundRequestId, Box<dyn Error>> {
-        let request = SproutRequest { command, payload };
-        let request_id = self.swarm
+    pub fn send_request_to_sprout(
+        &mut self,
+        peer_id: PeerId,
+        command: Command,
+    ) -> Result<OutboundRequestId, Box<dyn Error>> {
+        let request = SproutRequest {
+            command,
+            payload: String::new(),
+        };
+        let request_id = self
+            .swarm
             .behaviour_mut()
             .request_response
             .send_request(&peer_id, request);
@@ -368,43 +453,97 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sprout_creation() {
+    fn test_new() {
         let sprout = Sprout::new();
-        assert!(sprout.is_ok());
-    }
-
-    #[test]
-    fn test_get_data_storage() {
-        let sprout = Sprout::new().unwrap();
-        assert!(sprout.get_data_storage().is_ok());
-    }
-
-    #[test]
-    fn test_get_passport() {
-        let sprout = Sprout::new().unwrap();
-        assert!(sprout.get_passport().is_ok());
+        assert!(sprout.is_ok(), "Sprout::new should return Ok");
+        let sprout = sprout.unwrap();
+        assert_eq!(
+            sprout.connected_peers.len(),
+            0,
+            "New sprout should have no connected peers"
+        );
+        assert_eq!(
+            sprout.listeners().count(),
+            0,
+            "New sprout should have no listeners initially"
+        );
     }
 
     #[tokio::test]
-    async fn test_listen_on() {
+    async fn test_listen_on_valid_addr() {
         let mut sprout = Sprout::new().unwrap();
-        let listen_addr = "/ip4/127.0.0.1/tcp/4001".parse().unwrap();
-        let result = sprout.listen_on(listen_addr);
-        assert!(result.is_ok());
+        let addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
+        let result = sprout.listen_on(addr.clone());
+        assert!(
+            result.is_ok(),
+            "listen_on with valid address should succeed"
+        );
     }
 
     #[test]
     fn test_peer_id() {
         let sprout = Sprout::new().unwrap();
         let peer_id = sprout.peer_id();
-        assert!(peer_id.is_ok());
+        assert!(peer_id.is_ok(), "peer_id should return Ok");
+        assert_eq!(
+            peer_id.unwrap(),
+            *sprout.swarm.local_peer_id(),
+            "peer_id should match swarm's local_peer_id"
+        );
+    }
+
+    #[test]
+    fn test_get_data_storage() {
+        let sprout = Sprout::new().unwrap();
+        let data_storage = sprout.get_data_storage();
+        assert!(data_storage.is_ok(), "get_data_storage should return Ok");
+        assert!(
+            std::ptr::eq(data_storage.unwrap(), &sprout.data_storage),
+            "get_data_storage should return reference to internal data_storage"
+        );
+    }
+
+    #[test]
+    fn test_get_passport() {
+        let sprout = Sprout::new().unwrap();
+        let passport = sprout.get_passport();
+        assert!(passport.is_ok(), "get_passport should return Ok");
+        assert!(
+            std::ptr::eq(passport.unwrap(), &sprout.passport),
+            "get_passport should return reference to internal passport"
+        );
     }
 
     #[tokio::test]
-    async fn test_dial() {
+    async fn test_dial_valid_addr() {
         let mut sprout = Sprout::new().unwrap();
-        let remote_addr = "/ip4/127.0.0.1/tcp/4002";
-        let result = sprout.dial(remote_addr);
-        assert!(result.is_ok());
+        let valid_addr = "/ip4/127.0.0.1/tcp/12345";
+        let result = sprout.dial(valid_addr);
+        assert!(result.is_ok(), "dial with valid address should succeed");
+    }
+
+    #[tokio::test]
+    async fn test_dial_invalid_addr() {
+        let mut sprout = Sprout::new().unwrap();
+        let invalid_addr = "invalid_addr";
+        let result = sprout.dial(invalid_addr);
+        assert!(result.is_err(), "dial with invalid address should fail");
+    }
+
+    #[tokio::test]
+    async fn test_send_request_to_sprout() {
+        let mut sprout = Sprout::new().unwrap();
+        let peer_id = PeerId::random();
+        let command = Command::String(StringCommand::Set {
+            key: "key".to_string(),
+            value: "value".to_string(),
+        });
+        let result = sprout.send_request_to_sprout(peer_id, command);
+        assert!(result.is_ok(), "send_request_to_sprout should return Ok");
+        let request_id = result.unwrap();
+        assert!(
+            request_id.to_string().len() > 0,
+            "Request ID should be non-empty"
+        );
     }
 }

@@ -65,31 +65,63 @@ mod tests {
     #[test]
     fn test_new() {
         let passport = Passport::new();
-        assert!(passport.is_ok());
-        assert_eq!(passport.unwrap().field, "lawn");
+        assert!(passport.is_ok(), "Passport::new should return Ok");
+        let passport = passport.unwrap();
+        assert_eq!(
+            passport.field, "lawn",
+            "New passport should have default field 'lawn'"
+        );
     }
 
     #[test]
-    fn test_get_field() {
-        let passport = Passport {
-            field: "test_field".to_string(),
-        };
-        assert_eq!(passport.get_field().unwrap(), "test_field");
-
-        let passport = Passport {
-            field: String::new(),
-        };
-        assert!(passport.get_field().is_err());
+    fn test_get_field_empty() {
+        let mut passport = Passport::new().unwrap();
+        passport.field = String::new(); // Принудительно делаем поле пустым
+        let result = passport.get_field();
+        assert!(result.is_err(), "get_field should fail with empty field");
+        match result {
+            Err(PassportError::FieldRetrievalError) => (),
+            _ => panic!("get_field should return FieldRetrievalError for empty field"),
+        }
     }
 
     #[test]
-    fn test_set_field() {
-        let mut passport = Passport {
-            field: "old_field".to_string(),
-        };
-        assert!(passport.set_field("new_field".to_string()).is_ok());
-        assert_eq!(passport.field, "new_field");
+    fn test_get_field_success() {
+        let passport = Passport::new().unwrap();
+        let field = passport.get_field();
+        assert!(
+            field.is_ok(),
+            "get_field should succeed with non-empty field"
+        );
+        assert_eq!(field.unwrap(), &"lawn", "get_field should return 'lawn'");
+    }
 
-        assert!(passport.set_field(String::new()).is_err());
+    #[test]
+    fn test_set_field_empty() {
+        let mut passport = Passport::new().unwrap();
+        let result = passport.set_field("".to_string());
+        assert!(result.is_err(), "set_field should fail with empty value");
+        match result {
+            Err(PassportError::FieldModificationError) => (),
+            _ => panic!("set_field should return FieldModificationError for empty value"),
+        }
+        assert_eq!(
+            passport.field, "lawn",
+            "Field should remain 'lawn' after failed set"
+        );
+    }
+
+    #[test]
+    fn test_set_field_success() {
+        let mut passport = Passport::new().unwrap();
+        let result = passport.set_field("new_value".to_string());
+        assert!(
+            result.is_ok(),
+            "set_field should succeed with non-empty value"
+        );
+        assert_eq!(
+            passport.field, "new_value",
+            "Field should be updated to 'new_value'"
+        );
     }
 }

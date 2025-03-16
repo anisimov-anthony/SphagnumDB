@@ -2,10 +2,7 @@
 // © 2025 Anton Anisimov & Contributors
 // Licensed under the MIT License
 
-use libp2p::{
-    ping,
-    request_response,
-};
+use libp2p::{ping, request_response};
 use libp2p_swarm_derive::NetworkBehaviour;
 
 use super::req_resp_codec::{SproutRequest, SproutResponse};
