@@ -31,10 +31,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("Node is listening on: {}", addr);
     }
 
-    let _ = if let Some(addr) = matches.get_one::<String>("addr") {
+    if let Some(addr) = matches.get_one::<String>("addr") {
         sprout.dial(addr)?;
         println!("Connected to node at: {}", addr);
     };
+        
 
     let sprout_arc = Arc::new(Mutex::new(sprout));
 
