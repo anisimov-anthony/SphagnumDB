@@ -30,6 +30,7 @@ pub struct Sprout {
     passport: Passport,
     pub swarm: Swarm<SproutBehaviour>, // todo remove pub
     pub connected_peers: HashSet<PeerId>,
+    is_pinging_output_enabled: bool,
 }
 
 impl Sprout {
@@ -54,6 +55,7 @@ impl Sprout {
             passport: Passport::new()?,
             swarm,
             connected_peers: HashSet::new(),
+            is_pinging_output_enabled: false,
         })
     }
 
@@ -71,6 +73,20 @@ impl Sprout {
             ping,
             request_response,
         })
+    }
+
+    pub fn enable_pinging_output(&mut self) {
+        if !self.is_pinging_output_enabled {
+            self.is_pinging_output_enabled = true;
+            println!("Pinging enabled");
+        }
+    }
+
+    pub fn disable_pinging_output(&mut self) {
+        if self.is_pinging_output_enabled {
+            self.is_pinging_output_enabled = false;
+            println!("Pinging disabled");
+        }
     }
 
     pub fn listen_on(&mut self, listen_addr: Multiaddr) -> Result<(), Box<dyn Error>> {
@@ -220,20 +236,22 @@ impl Sprout {
                 Ok(())
             }
             SwarmEvent::Behaviour(SproutBehaviourEvent::Ping(event)) => {
-                let ping::Event { peer, result, .. } = event; // Исправлено
-                match result {
-                    Ok(rtt) => println!(
-                        "Node {} received ping from {}: {:?}",
-                        self.swarm.local_peer_id(),
-                        peer,
-                        rtt
-                    ),
-                    Err(e) => println!(
-                        "Node {} failed to ping {}: {:?}",
-                        self.swarm.local_peer_id(),
-                        peer,
-                        e
-                    ),
+                if self.is_pinging_output_enabled {
+                    let ping::Event { peer, result, .. } = event;
+                    match result {
+                        Ok(rtt) => println!(
+                            "Node {} received ping from {}: {:?}",
+                            self.swarm.local_peer_id(),
+                            peer,
+                            rtt
+                        ),
+                        Err(e) => println!(
+                            "Node {} failed to ping {}: {:?}",
+                            self.swarm.local_peer_id(),
+                            peer,
+                            e
+                        ),
+                    }
                 }
                 Ok(())
             }
