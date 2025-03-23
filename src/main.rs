@@ -35,7 +35,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         sprout.dial(addr)?;
         println!("Connected to node at: {}", addr);
     };
-        
 
     let sprout_arc = Arc::new(Mutex::new(sprout));
 
@@ -163,6 +162,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                     eprintln!("Not connected to any node.");
                                 }
                             }
+                        }
+                        "enable_pinging_output" => {
+                            let mut sprout = sprout_arc.lock().await;
+                            sprout.enable_pinging_output();
+                        }
+                        "disable_pinging_output" => {
+                            let mut sprout = sprout_arc.lock().await;
+                            sprout.disable_pinging_output();
                         }
                         _ => {
                             eprintln!("Unknown command: {}", command);
