@@ -1,4 +1,4 @@
-// SproutDB
+// SphagnumDB
 // © 2025 Anton Anisimov & Contributors
 // Licensed under the MIT License
 
@@ -18,23 +18,23 @@ use super::{
     commands::{generic::GenericCommand, string::StringCommand, Command},
     data_storage::DataStorage,
     passport::Passport,
-    req_resp_codec::{SproutRequest, SproutResponse},
-    sprout_behaviour::{SproutBehaviour, SproutBehaviourEvent},
+    req_resp_codec::{SphagnumRequest, SphagnumResponse},
+    sphagnum_behaviour::{SphagnumBehaviour, SphagnumBehaviourEvent},
 };
 
-/// Reminder: in this project, the nodes are called sprouts. Thus, this structure is a node
+/// Reminder: in this project, the nodes are called sphagnums. Thus, this structure is a node
 /// structure. At this stage, this is a highly simplified representation of the node, and it will be
 /// further refined.
-pub struct Sprout {
+pub struct SphagnumNode {
     data_storage: DataStorage,
     passport: Passport,
-    pub swarm: Swarm<SproutBehaviour>, // todo remove pub
+    pub swarm: Swarm<SphagnumBehaviour>, // todo remove pub
     pub connected_peers: HashSet<PeerId>,
     is_pinging_output_enabled: bool,
 }
 
-impl Sprout {
-    pub fn new() -> Result<Sprout, Box<dyn Error>> {
+impl SphagnumNode {
+    pub fn new() -> Result<SphagnumNode, Box<dyn Error>> {
         let behaviours = Self::configure_behaviours()?;
 
         let swarm = libp2p::SwarmBuilder::with_new_identity()
@@ -50,7 +50,7 @@ impl Sprout {
             })
             .build();
 
-        Ok(Sprout {
+        Ok(SphagnumNode {
             data_storage: DataStorage::new()?,
             passport: Passport::new()?,
             swarm,
@@ -59,17 +59,17 @@ impl Sprout {
         })
     }
 
-    fn configure_behaviours() -> Result<SproutBehaviour, Box<dyn Error>> {
+    fn configure_behaviours() -> Result<SphagnumBehaviour, Box<dyn Error>> {
         let ping = ping::Behaviour::default();
         let request_response = request_response::json::Behaviour::new(
             [(
-                StreamProtocol::new("/sproutdb/1.0.0"),
+                StreamProtocol::new("/SphagnumDB/1.0.0"),
                 ProtocolSupport::Full,
             )],
             request_response::Config::default(),
         );
 
-        Ok(SproutBehaviour {
+        Ok(SphagnumBehaviour {
             ping,
             request_response,
         })
@@ -235,7 +235,7 @@ impl Sprout {
                 );
                 Ok(())
             }
-            SwarmEvent::Behaviour(SproutBehaviourEvent::Ping(event)) => {
+            SwarmEvent::Behaviour(SphagnumBehaviourEvent::Ping(event)) => {
                 if self.is_pinging_output_enabled {
                     let ping::Event { peer, result, .. } = event;
                     match result {
@@ -255,7 +255,7 @@ impl Sprout {
                 }
                 Ok(())
             }
-            SwarmEvent::Behaviour(SproutBehaviourEvent::RequestResponse(event)) => {
+            SwarmEvent::Behaviour(SphagnumBehaviourEvent::RequestResponse(event)) => {
                 match event {
                     request_response::Event::Message {
                         peer,
@@ -278,21 +278,21 @@ impl Sprout {
                                         Ok(result) => {
                                             if let Some(ok) = result.downcast_ref::<String>() {
                                                 if ok.as_str() == "OK" {
-                                                    SproutResponse {
+                                                    SphagnumResponse {
                                                         payload: "OK".to_string(),
                                                     }
                                                 } else {
-                                                    SproutResponse {
+                                                    SphagnumResponse {
                                                         payload: "Unexpected response".to_string(),
                                                     }
                                                 }
                                             } else {
-                                                SproutResponse {
+                                                SphagnumResponse {
                                                     payload: "Unexpected response".to_string(),
                                                 }
                                             }
                                         }
-                                        Err(e) => SproutResponse {
+                                        Err(e) => SphagnumResponse {
                                             payload: format!("Error setting value: {:?}", e),
                                         },
                                     }
@@ -306,18 +306,18 @@ impl Sprout {
                                             if let Some(value) =
                                                 result.downcast_ref::<Option<String>>()
                                             {
-                                                SproutResponse {
+                                                SphagnumResponse {
                                                     payload: value
                                                         .clone()
                                                         .unwrap_or("nil".to_string()),
                                                 }
                                             } else {
-                                                SproutResponse {
+                                                SphagnumResponse {
                                                     payload: "Unexpected response".to_string(),
                                                 }
                                             }
                                         }
-                                        Err(e) => SproutResponse {
+                                        Err(e) => SphagnumResponse {
                                             payload: format!("Error getting value: {:?}", e),
                                         },
                                     }
@@ -328,16 +328,16 @@ impl Sprout {
                                     )) {
                                         Ok(result) => {
                                             if let Some(len) = result.downcast_ref::<u64>() {
-                                                SproutResponse {
+                                                SphagnumResponse {
                                                     payload: len.to_string(),
                                                 }
                                             } else {
-                                                SproutResponse {
+                                                SphagnumResponse {
                                                     payload: "Unexpected response".to_string(),
                                                 }
                                             }
                                         }
-                                        Err(e) => SproutResponse {
+                                        Err(e) => SphagnumResponse {
                                             payload: format!("Error appending value: {:?}", e),
                                         },
                                     }
@@ -348,16 +348,16 @@ impl Sprout {
                                     )) {
                                         Ok(result) => {
                                             if let Some(count) = result.downcast_ref::<u64>() {
-                                                SproutResponse {
+                                                SphagnumResponse {
                                                     payload: count.to_string(),
                                                 }
                                             } else {
-                                                SproutResponse {
+                                                SphagnumResponse {
                                                     payload: "Unexpected response".to_string(),
                                                 }
                                             }
                                         }
-                                        Err(e) => SproutResponse {
+                                        Err(e) => SphagnumResponse {
                                             payload: format!("Error checking existence: {:?}", e),
                                         },
                                     }
@@ -368,16 +368,16 @@ impl Sprout {
                                     )) {
                                         Ok(result) => {
                                             if let Some(count) = result.downcast_ref::<u64>() {
-                                                SproutResponse {
+                                                SphagnumResponse {
                                                     payload: count.to_string(),
                                                 }
                                             } else {
-                                                SproutResponse {
+                                                SphagnumResponse {
                                                     payload: "Unexpected response".to_string(),
                                                 }
                                             }
                                         }
-                                        Err(e) => SproutResponse {
+                                        Err(e) => SphagnumResponse {
                                             payload: format!("Error deleting keys: {:?}", e),
                                         },
                                     }
@@ -447,12 +447,12 @@ impl Sprout {
         Ok(())
     }
 
-    pub fn send_request_to_sprout(
+    pub fn send_request_to_sphagnum(
         &mut self,
         peer_id: PeerId,
         command: Command,
     ) -> Result<OutboundRequestId, Box<dyn Error>> {
-        let request = SproutRequest {
+        let request = SphagnumRequest {
             command,
             payload: String::new(),
         };
@@ -471,26 +471,26 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let sprout = Sprout::new();
-        assert!(sprout.is_ok(), "Sprout::new should return Ok");
-        let sprout = sprout.unwrap();
+        let sphagnum = SphagnumNode::new();
+        assert!(sphagnum.is_ok(), "SphagnumNode::new should return Ok");
+        let sphagnum = sphagnum.unwrap();
         assert_eq!(
-            sprout.connected_peers.len(),
+            sphagnum.connected_peers.len(),
             0,
-            "New sprout should have no connected peers"
+            "New sphagnum should have no connected peers"
         );
         assert_eq!(
-            sprout.listeners().count(),
+            sphagnum.listeners().count(),
             0,
-            "New sprout should have no listeners initially"
+            "New sphagnum should have no listeners initially"
         );
     }
 
     #[tokio::test]
     async fn test_listen_on_valid_addr() {
-        let mut sprout = Sprout::new().unwrap();
+        let mut sphagnum = SphagnumNode::new().unwrap();
         let addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
-        let result = sprout.listen_on(addr.clone());
+        let result = sphagnum.listen_on(addr.clone());
         assert!(
             result.is_ok(),
             "listen_on with valid address should succeed"
@@ -499,64 +499,64 @@ mod tests {
 
     #[test]
     fn test_peer_id() {
-        let sprout = Sprout::new().unwrap();
-        let peer_id = sprout.peer_id();
+        let sphagnum = SphagnumNode::new().unwrap();
+        let peer_id = sphagnum.peer_id();
         assert!(peer_id.is_ok(), "peer_id should return Ok");
         assert_eq!(
             peer_id.unwrap(),
-            *sprout.swarm.local_peer_id(),
+            *sphagnum.swarm.local_peer_id(),
             "peer_id should match swarm's local_peer_id"
         );
     }
 
     #[test]
     fn test_get_data_storage() {
-        let sprout = Sprout::new().unwrap();
-        let data_storage = sprout.get_data_storage();
+        let sphagnum = SphagnumNode::new().unwrap();
+        let data_storage = sphagnum.get_data_storage();
         assert!(data_storage.is_ok(), "get_data_storage should return Ok");
         assert!(
-            std::ptr::eq(data_storage.unwrap(), &sprout.data_storage),
+            std::ptr::eq(data_storage.unwrap(), &sphagnum.data_storage),
             "get_data_storage should return reference to internal data_storage"
         );
     }
 
     #[test]
     fn test_get_passport() {
-        let sprout = Sprout::new().unwrap();
-        let passport = sprout.get_passport();
+        let sphagnum = SphagnumNode::new().unwrap();
+        let passport = sphagnum.get_passport();
         assert!(passport.is_ok(), "get_passport should return Ok");
         assert!(
-            std::ptr::eq(passport.unwrap(), &sprout.passport),
+            std::ptr::eq(passport.unwrap(), &sphagnum.passport),
             "get_passport should return reference to internal passport"
         );
     }
 
     #[tokio::test]
     async fn test_dial_valid_addr() {
-        let mut sprout = Sprout::new().unwrap();
+        let mut sphagnum = SphagnumNode::new().unwrap();
         let valid_addr = "/ip4/127.0.0.1/tcp/12345";
-        let result = sprout.dial(valid_addr);
+        let result = sphagnum.dial(valid_addr);
         assert!(result.is_ok(), "dial with valid address should succeed");
     }
 
     #[tokio::test]
     async fn test_dial_invalid_addr() {
-        let mut sprout = Sprout::new().unwrap();
+        let mut sphagnum = SphagnumNode::new().unwrap();
         let invalid_addr = "invalid_addr";
-        let result = sprout.dial(invalid_addr);
+        let result = sphagnum.dial(invalid_addr);
         assert!(result.is_err(), "dial with invalid address should fail");
     }
 
     #[tokio::test]
-    async fn test_send_request_to_sprout() {
-        let mut sprout = Sprout::new().unwrap();
+    async fn test_send_request_to_sphagnum() {
+        let mut sphagnum = SphagnumNode::new().unwrap();
         let peer_id = PeerId::random();
         let command = Command::String(StringCommand::Set {
             key: "key".to_string(),
             value: "value".to_string(),
         });
-        let result = sprout.send_request_to_sprout(peer_id, command);
-        assert!(result.is_ok(), "send_request_to_sprout should return Ok");
+        let result = sphagnum.send_request_to_sphagnum(peer_id, command);
+        assert!(result.is_ok(), "send_request_to_sphagnum should return Ok");
         let request_id = result.unwrap();
         assert!(
             request_id.to_string().len() > 0,

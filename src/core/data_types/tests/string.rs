@@ -1,10 +1,10 @@
-// SproutDB
+// SphagnumDB
 // © 2025 Anton Anisimov & Contributors
 // Licensed under the MIT License
 
-use sproutdb::core::data_types::string_store::StringStore;
-use sproutdb::core::data_types::data_type::DataType;
-use sproutdb::core::commands::{
+use SphagnumDB::core::data_types::string_store::StringStore;
+use SphagnumDB::core::data_types::data_type::DataType;
+use SphagnumDB::core::commands::{
     Command,
     string_commands::StringCommand,
     generic_commands::GenericCommand,

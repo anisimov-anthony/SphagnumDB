@@ -1,11 +1,11 @@
 [package]
-name = "sproutdb"
+name = "sphagnumdb"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
 
 [lib]
-name = "sproutdb"
+name = "sphagnumdb"
 path = "src/lib.rs"
 
 # Please note that there may be unnecessary dependencies in this list due to the rapidly developing project.

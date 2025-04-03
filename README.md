@@ -1,26 +1,21 @@
-# 🌱 SproutDB  
+# SphagnumDB
 
-**SproutDB** is conceived as a lightweight, decentralized key-value store, developed as part of a research task. This project is at a very early stage, but not for long!
+**SphagnumDB** is a minimalist, decentralized key-value database built on a network of lightweight nodes connected via **libp2p**. Like sphagnum moss, it's resilient, low-maintenance, and thrives in harsh conditions where others fail.
+
 <p align="center">
-  <img src="./docs/SproutDB_logo.jpg" alt="SproutDB Logo" width="200">
+  <img src="./docs/SphagnumDB_logo.png" alt="SphagnumDB Logo" width="200">
 </p>
 
+## **Philosophy**
 
-## 🌾 Terminology  
-- **Sprouts** → Individual nodes that store and manage data.  
-- **Fields** → Sharded partitions of the database, cultivated across multiple sprouts.  
-- **Paths** → P2P connections forming a dynamic, self-sustaining network. Don’t get lost!  
+* **Simplicity ≠ primitiveness:** Simple and intuitive API, but thoughtful architecture.
+* **Decentralization like moss:** No master nodes — just a peer-to-peer mat.
+* **Unpretentiousness **to** the **environment**:** Must meet the minimum system requirements.
 
+## Installation
 
-
-## 🚀 Features  
-- 🔗 **Decentralized architecture** ensuring resilience and fault tolerance.  
-- 🌍 **Sharding and replication** for seamless scalability.  
-- 🌱 **Lightweight and efficient**, ideal for low-power environments.  
-- 🔒 **Merkle Tree verification** to maintain data integrity.  
-
-## 📦 Installation  
 ```sh
-git clone https://github.com/AntonAnisimovMIPT/SproutDB.git
-cd SproutDB
-cargo build --release
+git clone https://github.com/sphagnum-systems/SphagnumDB.git
+cd SphagnumDB  
+cargo build --release  
+```

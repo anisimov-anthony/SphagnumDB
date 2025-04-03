@@ -1,4 +1,4 @@
-// SproutDB
+// SphagnumDB
 // © 2025 Anton Anisimov & Contributors
 // Licensed under the MIT License
 
@@ -23,7 +23,7 @@ impl fmt::Display for PassportError {
 
 impl Error for PassportError {}
 
-/// The passport of this sprout node.
+/// The passport of this sphagnum node.
 /// At this stage, it represents a highly simplified implementation, we believe in the authenticity
 /// of this data at its word.
 pub struct Passport {
