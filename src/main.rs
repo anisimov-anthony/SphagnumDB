@@ -1,8 +1,8 @@
 use clap::{Arg, Command}; // Используем `Command` вместо `App`
 use libp2p::Multiaddr;
-use sproutdb::core::{
-    commands::{generic::GenericCommand, string::StringCommand, Command as SproutCommand},
-    sprout::Sprout,
+use sphagnumdb::core::{
+    commands::{generic::GenericCommand, string::StringCommand, Command as SphagnumCommand},
+    sphagnum::SphagnumNode,
 };
 use std::error::Error;
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let matches = Command::new("SproutDB Node")
+    let matches = Command::new("SphagnumDB Node")
         .arg(
             Arg::new("addr")
                 .long("addr")
@@ -20,30 +20,30 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )
         .get_matches();
 
-    let mut sprout = Sprout::new()?;
+    let mut sphagnum = SphagnumNode::new()?;
 
-    println!("PeerID: {}", sprout.peer_id()?);
+    println!("PeerID: {}", sphagnum.peer_id()?);
 
     let listen_addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse()?;
-    sprout.listen_on(listen_addr.clone())?;
+    sphagnum.listen_on(listen_addr.clone())?;
 
-    if let Some(addr) = sprout.listeners().next() {
+    if let Some(addr) = sphagnum.listeners().next() {
         println!("Node is listening on: {}", addr);
     }
 
     if let Some(addr) = matches.get_one::<String>("addr") {
-        sprout.dial(addr)?;
+        sphagnum.dial(addr)?;
         println!("Connected to node at: {}", addr);
     };
 
-    let sprout_arc = Arc::new(Mutex::new(sprout));
+    let sphagnum_arc = Arc::new(Mutex::new(sphagnum));
 
     let handle_events = {
-        let sprout_arc = Arc::clone(&sprout_arc);
+        let sphagnum_arc = Arc::clone(&sphagnum_arc);
         tokio::spawn(async move {
             loop {
-                let mut sprout = sprout_arc.lock().await;
-                if let Err(e) = sprout.handle_event().await {
+                let mut sphagnum = sphagnum_arc.lock().await;
+                if let Err(e) = sphagnum.handle_event().await {
                     eprintln!("Error handling event: {}", e);
                 }
             }
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let handle_input = {
-        let sprout_arc = Arc::clone(&sprout_arc);
+        let sphagnum_arc = Arc::clone(&sphagnum_arc);
         tokio::spawn(async move {
             let stdin = io::stdin();
             let mut reader = BufReader::new(stdin).lines();
@@ -62,13 +62,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     match command.to_lowercase().as_str() {
                         "get" => {
                             if let Some(key) = parts.next() {
-                                let mut sprout = sprout_arc.lock().await;
-                                if let Some(peer_id) = sprout.connected_peers.iter().next().copied()
+                                let mut sphagnum = sphagnum_arc.lock().await;
+                                if let Some(peer_id) =
+                                    sphagnum.connected_peers.iter().next().copied()
                                 {
-                                    let cmd = SproutCommand::String(StringCommand::Get {
+                                    let cmd = SphagnumCommand::String(StringCommand::Get {
                                         key: key.to_string(),
                                     });
-                                    match sprout.send_request_to_sprout(peer_id, cmd) {
+                                    match sphagnum.send_request_to_sphagnum(peer_id, cmd) {
                                         Ok(_) => println!("Get request sent for key: {}", key),
                                         Err(e) => eprintln!("Failed to send Get request: {}", e),
                                     }
@@ -81,14 +82,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         }
                         "set" => {
                             if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
-                                let mut sprout = sprout_arc.lock().await;
-                                if let Some(peer_id) = sprout.connected_peers.iter().next().copied()
+                                let mut sphagnum = sphagnum_arc.lock().await;
+                                if let Some(peer_id) =
+                                    sphagnum.connected_peers.iter().next().copied()
                                 {
-                                    let cmd = SproutCommand::String(StringCommand::Set {
+                                    let cmd = SphagnumCommand::String(StringCommand::Set {
                                         key: key.to_string(),
                                         value: value.to_string(),
                                     });
-                                    match sprout.send_request_to_sprout(peer_id, cmd) {
+                                    match sphagnum.send_request_to_sphagnum(peer_id, cmd) {
                                         Ok(_) => println!(
                                             "Set request sent with key: {}, value: {}",
                                             key, value
@@ -104,14 +106,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         }
                         "append" => {
                             if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
-                                let mut sprout = sprout_arc.lock().await;
-                                if let Some(peer_id) = sprout.connected_peers.iter().next().copied()
+                                let mut sphagnum = sphagnum_arc.lock().await;
+                                if let Some(peer_id) =
+                                    sphagnum.connected_peers.iter().next().copied()
                                 {
-                                    let cmd = SproutCommand::String(StringCommand::Append {
+                                    let cmd = SphagnumCommand::String(StringCommand::Append {
                                         key: key.to_string(),
                                         value: value.to_string(),
                                     });
-                                    match sprout.send_request_to_sprout(peer_id, cmd) {
+                                    match sphagnum.send_request_to_sphagnum(peer_id, cmd) {
                                         Ok(_) => println!(
                                             "Append request sent with key: {}, value: {}",
                                             key, value
@@ -130,12 +133,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             if keys.is_empty() {
                                 eprintln!("Usage: exists <key> [key ...]");
                             } else {
-                                let mut sprout = sprout_arc.lock().await;
-                                if let Some(peer_id) = sprout.connected_peers.iter().next().copied()
+                                let mut sphagnum = sphagnum_arc.lock().await;
+                                if let Some(peer_id) =
+                                    sphagnum.connected_peers.iter().next().copied()
                                 {
                                     let cmd =
-                                        SproutCommand::Generic(GenericCommand::Exists { keys });
-                                    match sprout.send_request_to_sprout(peer_id, cmd) {
+                                        SphagnumCommand::Generic(GenericCommand::Exists { keys });
+                                    match sphagnum.send_request_to_sphagnum(peer_id, cmd) {
                                         Ok(_) => println!("Exists request sent for keys"),
                                         Err(e) => eprintln!("Failed to send Exists request: {}", e),
                                     }
@@ -149,12 +153,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             if keys.is_empty() {
                                 eprintln!("Usage: del <key> [key ...]");
                             } else {
-                                let mut sprout = sprout_arc.lock().await;
-                                if let Some(peer_id) = sprout.connected_peers.iter().next().copied()
+                                let mut sphagnum = sphagnum_arc.lock().await;
+                                if let Some(peer_id) =
+                                    sphagnum.connected_peers.iter().next().copied()
                                 {
                                     let cmd =
-                                        SproutCommand::Generic(GenericCommand::Delete { keys });
-                                    match sprout.send_request_to_sprout(peer_id, cmd) {
+                                        SphagnumCommand::Generic(GenericCommand::Delete { keys });
+                                    match sphagnum.send_request_to_sphagnum(peer_id, cmd) {
                                         Ok(_) => println!("Delete request sent for keys"),
                                         Err(e) => eprintln!("Failed to send Delete request: {}", e),
                                     }
@@ -164,12 +169,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             }
                         }
                         "enable_pinging_output" => {
-                            let mut sprout = sprout_arc.lock().await;
-                            sprout.enable_pinging_output();
+                            let mut sphagnum = sphagnum_arc.lock().await;
+                            sphagnum.enable_pinging_output();
                         }
                         "disable_pinging_output" => {
-                            let mut sprout = sprout_arc.lock().await;
-                            sprout.disable_pinging_output();
+                            let mut sphagnum = sphagnum_arc.lock().await;
+                            sphagnum.disable_pinging_output();
                         }
                         _ => {
                             eprintln!("Unknown command: {}", command);
