@@ -31,6 +31,9 @@ pub struct SphagnumNode {
     pub swarm: Swarm<SphagnumBehaviour>, // todo remove pub
     pub connected_peers: HashSet<PeerId>,
     is_pinging_output_enabled: bool,
+
+    /// Multiple nodes to which data will be replicated
+    replica_set: HashSet<PeerId>,
 }
 
 impl SphagnumNode {
@@ -56,6 +59,7 @@ impl SphagnumNode {
             swarm,
             connected_peers: HashSet::new(),
             is_pinging_output_enabled: false,
+            replica_set: HashSet::new(),
         })
     }
 
@@ -108,6 +112,36 @@ impl SphagnumNode {
 
     pub fn get_passport(&self) -> Result<&Passport, Box<dyn Error>> {
         Ok(&self.passport)
+    }
+
+    pub fn add_to_replica_set(&mut self, peer_id: PeerId) -> Result<(), Box<dyn Error>> {
+        self.replica_set.insert(peer_id);
+        Ok(())
+    }
+
+    // todo: async
+    fn send_to_replicas(&mut self, command: Command) -> Result<(), Box<dyn Error>> {
+        let self_id = self.peer_id()?;
+        let peers_to_replicate: Vec<PeerId> = self
+            .replica_set
+            .iter()
+            .filter(|&peer_id| peer_id != &self_id && self.connected_peers.contains(peer_id))
+            .copied()
+            .collect();
+
+        for peer_id in peers_to_replicate {
+            let request = SphagnumRequest {
+                command: command.clone(),
+                payload: String::new(),
+                is_replication: true,
+            };
+
+            self.swarm
+                .behaviour_mut()
+                .request_response
+                .send_request(&peer_id, request);
+        }
+        Ok(())
     }
 
     pub async fn handle_event(&mut self) -> Result<(), Box<dyn Error>> {
@@ -269,7 +303,7 @@ impl SphagnumNode {
                         } => {
                             println!("Node {} received request from {} (connection: {:?}, request_id: {:?}): {:?}", 
                                     self.swarm.local_peer_id(), peer, connection_id, request_id, request);
-
+                            let command_to_replicate = request.command.clone();
                             let response = match request.command {
                                 Command::String(StringCommand::Set { key, value }) => {
                                     match self.data_storage.handle_command(Command::String(
@@ -278,6 +312,13 @@ impl SphagnumNode {
                                         Ok(result) => {
                                             if let Some(ok) = result.downcast_ref::<String>() {
                                                 if ok.as_str() == "OK" {
+                                                    if !request.is_replication {
+                                                        if let Err(e) = self
+                                                            .send_to_replicas(command_to_replicate)
+                                                        {
+                                                            println!("Replication failed: {:?}", e);
+                                                        }
+                                                    }
                                                     SphagnumResponse {
                                                         payload: "OK".to_string(),
                                                     }
@@ -306,6 +347,7 @@ impl SphagnumNode {
                                             if let Some(value) =
                                                 result.downcast_ref::<Option<String>>()
                                             {
+                                                // warning!!! there are no send replica behaviour, you should belive in consistency)))
                                                 SphagnumResponse {
                                                     payload: value
                                                         .clone()
@@ -328,6 +370,13 @@ impl SphagnumNode {
                                     )) {
                                         Ok(result) => {
                                             if let Some(len) = result.downcast_ref::<u64>() {
+                                                if !request.is_replication {
+                                                    if let Err(e) =
+                                                        self.send_to_replicas(command_to_replicate)
+                                                    {
+                                                        println!("Replication failed: {:?}", e);
+                                                    }
+                                                }
                                                 SphagnumResponse {
                                                     payload: len.to_string(),
                                                 }
@@ -348,6 +397,13 @@ impl SphagnumNode {
                                     )) {
                                         Ok(result) => {
                                             if let Some(count) = result.downcast_ref::<u64>() {
+                                                if !request.is_replication {
+                                                    if let Err(e) =
+                                                        self.send_to_replicas(command_to_replicate)
+                                                    {
+                                                        println!("Replication failed: {:?}", e);
+                                                    }
+                                                }
                                                 SphagnumResponse {
                                                     payload: count.to_string(),
                                                 }
@@ -368,6 +424,13 @@ impl SphagnumNode {
                                     )) {
                                         Ok(result) => {
                                             if let Some(count) = result.downcast_ref::<u64>() {
+                                                if !request.is_replication {
+                                                    if let Err(e) =
+                                                        self.send_to_replicas(command_to_replicate)
+                                                    {
+                                                        println!("Replication failed: {:?}", e);
+                                                    }
+                                                }
                                                 SphagnumResponse {
                                                     payload: count.to_string(),
                                                 }
@@ -455,6 +518,7 @@ impl SphagnumNode {
         let request = SphagnumRequest {
             command,
             payload: String::new(),
+            is_replication: false, // by default
         };
         let request_id = self
             .swarm
