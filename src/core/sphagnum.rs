@@ -489,7 +489,7 @@ impl SphagnumNode {
         Ok(())
     }
 
-    pub fn send_request_to_sphagnum(
+    pub async fn send_request_to_sphagnum(
         &mut self,
         peer_id: PeerId,
         command: Command,
@@ -598,7 +598,7 @@ mod tests {
             key: "key".to_string(),
             value: "value".to_string(),
         });
-        let result = sphagnum.send_request_to_sphagnum(peer_id, command);
+        let result = sphagnum.send_request_to_sphagnum(peer_id, command).await;
         assert!(result.is_ok(), "send_request_to_sphagnum should return Ok");
         let request_id = result.unwrap();
         assert!(

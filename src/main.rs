@@ -103,7 +103,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                             let cmd = SphagnumCommand::String(StringCommand::Get {
                                                 key: key.to_string(),
                                             });
-                                            match sphagnum.send_request_to_sphagnum(peer_id, cmd) {
+                                            match sphagnum
+                                                .send_request_to_sphagnum(peer_id, cmd)
+                                                .await
+                                            {
                                                 Ok(_) => {
                                                     println!("Get request sent for key: {}", key)
                                                 }
@@ -128,7 +131,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                                 key: key.to_string(),
                                                 value: value.to_string(),
                                             });
-                                            match sphagnum.send_request_to_sphagnum(peer_id, cmd) {
+                                            match sphagnum
+                                                .send_request_to_sphagnum(peer_id, cmd)
+                                                .await
+                                            {
                                                 Ok(_) => println!(
                                                     "Set request sent with key: {}, value: {}",
                                                     key, value
@@ -155,7 +161,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                                     key: key.to_string(),
                                                     value: value.to_string(),
                                                 });
-                                            match sphagnum.send_request_to_sphagnum(peer_id, cmd) {
+                                            match sphagnum
+                                                .send_request_to_sphagnum(peer_id, cmd)
+                                                .await
+                                            {
                                                 Ok(_) => println!(
                                                     "Append request sent with key: {}, value: {}",
                                                     key, value
@@ -185,7 +194,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                                 SphagnumCommand::Generic(GenericCommand::Exists {
                                                     keys,
                                                 });
-                                            match sphagnum.send_request_to_sphagnum(peer_id, cmd) {
+                                            match sphagnum
+                                                .send_request_to_sphagnum(peer_id, cmd)
+                                                .await
+                                            {
                                                 Ok(_) => println!("Exists request sent for keys"),
                                                 Err(e) => eprintln!(
                                                     "Failed to send Exists request: {}",
@@ -210,7 +222,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                                 SphagnumCommand::Generic(GenericCommand::Delete {
                                                     keys,
                                                 });
-                                            match sphagnum.send_request_to_sphagnum(peer_id, cmd) {
+                                            match sphagnum
+                                                .send_request_to_sphagnum(peer_id, cmd)
+                                                .await
+                                            {
                                                 Ok(_) => println!("Delete request sent for keys"),
                                                 Err(e) => eprintln!(
                                                     "Failed to send Delete request: {}",
