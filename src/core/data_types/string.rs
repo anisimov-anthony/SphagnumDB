@@ -2,9 +2,10 @@
 // © 2025 Anton Anisimov & Contributors
 // Licensed under the MIT License
 
-use crate::core::commands::{generic::GenericCommand, string::StringCommand, Command};
+use crate::core::commands::{
+    generic::GenericCommand, string::StringCommand, Command, CommandResult,
+};
 use crate::core::data_types::data_type::{DataType, GenericOperations};
-use std::any::Any;
 use std::collections::HashMap;
 use std::error::Error;
 
@@ -20,32 +21,32 @@ impl DataType for StringStore {
         })
     }
 
-    fn handle_command(&mut self, command: Command) -> Result<Box<dyn Any>, Box<dyn Error>> {
+    fn handle_command(&mut self, command: Command) -> Result<CommandResult, Box<dyn Error>> {
         match command {
             Command::String(cmd) => match cmd {
                 StringCommand::Set { key, value } => {
                     self.set(key, value)?;
-                    Ok(Box::new("OK".to_string()))
+                    Ok(CommandResult::String("OK".to_string()))
                 }
                 StringCommand::Get { key } => {
                     let result = self.get(&key)?;
-                    Ok(Box::new(result))
+                    Ok(result.map_or(CommandResult::Nil, CommandResult::String))
                 }
                 StringCommand::Append { key, value } => {
                     let len = self.append(key, value)?;
-                    Ok(Box::new(len))
+                    Ok(CommandResult::Int(len))
                 }
             },
             Command::Generic(cmd) => match cmd {
                 GenericCommand::Exists { keys } => {
                     let keys_ref: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
                     let result = self.exists(keys_ref)?;
-                    Ok(Box::new(result))
+                    Ok(CommandResult::Int(result))
                 }
                 GenericCommand::Delete { keys } => {
                     let keys_ref: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
                     let result = self.delete(keys_ref)?;
-                    Ok(Box::new(result))
+                    Ok(CommandResult::Int(result))
                 }
             },
             #[allow(unreachable_patterns)]

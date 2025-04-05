@@ -14,3 +14,13 @@ pub enum Command {
     Generic(GenericCommand),
     // TODO
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CommandResult {
+    // todo: check other docs
+    String(String),
+    Int(u64),
+    Bool(bool),
+    Nil,
+    Error(String),
+}

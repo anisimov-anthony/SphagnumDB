@@ -2,8 +2,7 @@
 // © 2025 Anton Anisimov & Contributors
 // Licensed under the MIT License
 
-use crate::core::commands::Command;
-use std::any::Any;
+use crate::core::commands::{Command, CommandResult};
 use std::error::Error;
 
 /// Generic methods for all Data Types.
@@ -25,6 +24,6 @@ pub trait DataType: std::fmt::Debug + Send + GenericOperations {
         Self: Sized;
 
     /// Handles a command and returns the result.
-    fn handle_command(&mut self, command: Command) -> Result<Box<dyn Any>, Box<dyn Error>>;
+    fn handle_command(&mut self, command: Command) -> Result<CommandResult, Box<dyn Error>>;
     // TODO
 }
