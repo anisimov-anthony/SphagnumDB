@@ -15,7 +15,7 @@ pub enum Command {
     // TODO
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub enum CommandResult {
     // todo: check other docs
     String(String),
