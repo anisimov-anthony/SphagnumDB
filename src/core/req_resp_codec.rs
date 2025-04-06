@@ -8,6 +8,7 @@ use super::commands::Command;
 pub struct SphagnumRequest {
     pub command: Command,
     pub payload: String, // leave it for compatibility, but maybe we don't use it yet
+    pub is_replication: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

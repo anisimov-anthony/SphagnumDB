@@ -2,10 +2,10 @@
 // © 2025 Anton Anisimov & Contributors
 // Licensed under the MIT License
 
-use std::{any::Any, error::Error, fmt};
+use std::{error::Error, fmt};
 
 use super::data_types::{data_type::DataType, string::StringStore};
-use crate::core::commands::Command;
+use crate::core::commands::{Command, CommandResult};
 
 #[derive(Debug)]
 pub enum DataStorageError {
@@ -41,7 +41,7 @@ impl DataStorage {
         })
     }
 
-    pub fn handle_command(&mut self, command: Command) -> Result<Box<dyn Any>, DataStorageError> {
+    pub fn handle_command(&mut self, command: Command) -> Result<CommandResult, DataStorageError> {
         self.storage
             .handle_command(command)
             .map_err(|_| DataStorageError::DataModificationError)

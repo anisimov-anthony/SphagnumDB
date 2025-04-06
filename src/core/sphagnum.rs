@@ -15,7 +15,7 @@ use libp2p::{
 use std::collections::HashSet;
 
 use super::{
-    commands::{generic::GenericCommand, string::StringCommand, Command},
+    commands::{generic::GenericCommand, string::StringCommand, Command, CommandResult},
     data_storage::DataStorage,
     passport::Passport,
     req_resp_codec::{SphagnumRequest, SphagnumResponse},
@@ -31,6 +31,9 @@ pub struct SphagnumNode {
     pub swarm: Swarm<SphagnumBehaviour>, // todo remove pub
     pub connected_peers: HashSet<PeerId>,
     is_pinging_output_enabled: bool,
+
+    /// Multiple nodes to which data will be replicated
+    replica_set: HashSet<PeerId>,
 }
 
 impl SphagnumNode {
@@ -56,6 +59,7 @@ impl SphagnumNode {
             swarm,
             connected_peers: HashSet::new(),
             is_pinging_output_enabled: false,
+            replica_set: HashSet::new(),
         })
     }
 
@@ -102,12 +106,46 @@ impl SphagnumNode {
         Ok(*self.swarm.local_peer_id())
     }
 
-    pub fn get_data_storage(&self) -> Result<&DataStorage, Box<dyn Error>> {
-        Ok(&self.data_storage)
-    }
-
     pub fn get_passport(&self) -> Result<&Passport, Box<dyn Error>> {
         Ok(&self.passport)
+    }
+
+    pub fn add_to_replica_set(&mut self, peer_id: PeerId) -> Result<(), Box<dyn Error>> {
+        self.replica_set.insert(peer_id);
+        Ok(())
+    }
+
+    // todo: async
+    async fn send_to_replicas(&mut self, command: Command) -> Result<(), Box<dyn Error>> {
+        let self_id = self.peer_id()?;
+        let peers_to_replicate: Vec<PeerId> = self
+            .replica_set
+            .iter()
+            .filter(|&peer_id| peer_id != &self_id && self.connected_peers.contains(peer_id))
+            .copied()
+            .collect();
+
+        for peer_id in peers_to_replicate {
+            let request = SphagnumRequest {
+                command: command.clone(),
+                payload: String::new(),
+                is_replication: true,
+            };
+
+            self.swarm
+                .behaviour_mut()
+                .request_response
+                .send_request(&peer_id, request);
+        }
+        Ok(())
+    }
+
+    // todo: redesign
+    // warning: no replication, if you want replication - use handle_event
+    pub fn handle_command(&mut self, command: Command) -> Result<CommandResult, Box<dyn Error>> {
+        self.data_storage
+            .handle_command(command)
+            .map_err(|e| Box::new(e) as Box<dyn Error>)
     }
 
     pub async fn handle_event(&mut self) -> Result<(), Box<dyn Error>> {
@@ -270,28 +308,26 @@ impl SphagnumNode {
                             println!("Node {} received request from {} (connection: {:?}, request_id: {:?}): {:?}", 
                                     self.swarm.local_peer_id(), peer, connection_id, request_id, request);
 
+                            let command_to_replicate = request.command.clone();
                             let response = match request.command {
                                 Command::String(StringCommand::Set { key, value }) => {
                                     match self.data_storage.handle_command(Command::String(
                                         StringCommand::Set { key, value },
                                     )) {
-                                        Ok(result) => {
-                                            if let Some(ok) = result.downcast_ref::<String>() {
-                                                if ok.as_str() == "OK" {
-                                                    SphagnumResponse {
-                                                        payload: "OK".to_string(),
-                                                    }
-                                                } else {
-                                                    SphagnumResponse {
-                                                        payload: "Unexpected response".to_string(),
-                                                    }
-                                                }
-                                            } else {
-                                                SphagnumResponse {
-                                                    payload: "Unexpected response".to_string(),
+                                        Ok(CommandResult::String(ok)) => {
+                                            if ok == "OK" && !request.is_replication {
+                                                if let Err(e) = self
+                                                    .send_to_replicas(command_to_replicate)
+                                                    .await
+                                                {
+                                                    println!("Replication failed: {:?}", e);
                                                 }
                                             }
+                                            SphagnumResponse { payload: ok }
                                         }
+                                        Ok(_) => SphagnumResponse {
+                                            payload: "Unexpected response".to_string(),
+                                        },
                                         Err(e) => SphagnumResponse {
                                             payload: format!("Error setting value: {:?}", e),
                                         },
@@ -302,21 +338,15 @@ impl SphagnumNode {
                                         .data_storage
                                         .handle_command(Command::String(StringCommand::Get { key }))
                                     {
-                                        Ok(result) => {
-                                            if let Some(value) =
-                                                result.downcast_ref::<Option<String>>()
-                                            {
-                                                SphagnumResponse {
-                                                    payload: value
-                                                        .clone()
-                                                        .unwrap_or("nil".to_string()),
-                                                }
-                                            } else {
-                                                SphagnumResponse {
-                                                    payload: "Unexpected response".to_string(),
-                                                }
-                                            }
+                                        Ok(CommandResult::String(value)) => {
+                                            SphagnumResponse { payload: value }
                                         }
+                                        Ok(CommandResult::Nil) => SphagnumResponse {
+                                            payload: "nil".to_string(),
+                                        },
+                                        Ok(_) => SphagnumResponse {
+                                            payload: "Unexpected response".to_string(),
+                                        },
                                         Err(e) => SphagnumResponse {
                                             payload: format!("Error getting value: {:?}", e),
                                         },
@@ -326,17 +356,22 @@ impl SphagnumNode {
                                     match self.data_storage.handle_command(Command::String(
                                         StringCommand::Append { key, value },
                                     )) {
-                                        Ok(result) => {
-                                            if let Some(len) = result.downcast_ref::<u64>() {
-                                                SphagnumResponse {
-                                                    payload: len.to_string(),
-                                                }
-                                            } else {
-                                                SphagnumResponse {
-                                                    payload: "Unexpected response".to_string(),
+                                        Ok(CommandResult::Int(len)) => {
+                                            if !request.is_replication {
+                                                if let Err(e) = self
+                                                    .send_to_replicas(command_to_replicate)
+                                                    .await
+                                                {
+                                                    println!("Replication failed: {:?}", e);
                                                 }
                                             }
+                                            SphagnumResponse {
+                                                payload: len.to_string(),
+                                            }
                                         }
+                                        Ok(_) => SphagnumResponse {
+                                            payload: "Unexpected response".to_string(),
+                                        },
                                         Err(e) => SphagnumResponse {
                                             payload: format!("Error appending value: {:?}", e),
                                         },
@@ -346,17 +381,22 @@ impl SphagnumNode {
                                     match self.data_storage.handle_command(Command::Generic(
                                         GenericCommand::Exists { keys },
                                     )) {
-                                        Ok(result) => {
-                                            if let Some(count) = result.downcast_ref::<u64>() {
-                                                SphagnumResponse {
-                                                    payload: count.to_string(),
-                                                }
-                                            } else {
-                                                SphagnumResponse {
-                                                    payload: "Unexpected response".to_string(),
+                                        Ok(CommandResult::Int(count)) => {
+                                            if !request.is_replication {
+                                                if let Err(e) = self
+                                                    .send_to_replicas(command_to_replicate)
+                                                    .await
+                                                {
+                                                    println!("Replication failed: {:?}", e);
                                                 }
                                             }
+                                            SphagnumResponse {
+                                                payload: count.to_string(),
+                                            }
                                         }
+                                        Ok(_) => SphagnumResponse {
+                                            payload: "Unexpected response".to_string(),
+                                        },
                                         Err(e) => SphagnumResponse {
                                             payload: format!("Error checking existence: {:?}", e),
                                         },
@@ -366,23 +406,29 @@ impl SphagnumNode {
                                     match self.data_storage.handle_command(Command::Generic(
                                         GenericCommand::Delete { keys },
                                     )) {
-                                        Ok(result) => {
-                                            if let Some(count) = result.downcast_ref::<u64>() {
-                                                SphagnumResponse {
-                                                    payload: count.to_string(),
-                                                }
-                                            } else {
-                                                SphagnumResponse {
-                                                    payload: "Unexpected response".to_string(),
+                                        Ok(CommandResult::Int(count)) => {
+                                            if !request.is_replication {
+                                                if let Err(e) = self
+                                                    .send_to_replicas(command_to_replicate)
+                                                    .await
+                                                {
+                                                    println!("Replication failed: {:?}", e);
                                                 }
                                             }
+                                            SphagnumResponse {
+                                                payload: count.to_string(),
+                                            }
                                         }
+                                        Ok(_) => SphagnumResponse {
+                                            payload: "Unexpected response".to_string(),
+                                        },
                                         Err(e) => SphagnumResponse {
                                             payload: format!("Error deleting keys: {:?}", e),
                                         },
                                     }
                                 }
                             };
+
                             self.swarm
                                 .behaviour_mut()
                                 .request_response
@@ -404,7 +450,7 @@ impl SphagnumNode {
                         error,
                     } => {
                         println!("Node {} outbound request to {} (connection: {:?}, request: {:?}) failed: {:?}", 
-                            self.swarm.local_peer_id(), peer, connection_id, request_id, error);
+                                self.swarm.local_peer_id(), peer, connection_id, request_id, error);
                     }
                     request_response::Event::InboundFailure {
                         peer,
@@ -413,7 +459,7 @@ impl SphagnumNode {
                         error,
                     } => {
                         println!("Node {} inbound request from {} (connection: {:?}, request: {:?}) failed: {:?}", 
-                            self.swarm.local_peer_id(), peer, connection_id, request_id, error);
+                                self.swarm.local_peer_id(), peer, connection_id, request_id, error);
                     }
                     request_response::Event::ResponseSent {
                         peer,
@@ -447,7 +493,7 @@ impl SphagnumNode {
         Ok(())
     }
 
-    pub fn send_request_to_sphagnum(
+    pub async fn send_request_to_sphagnum(
         &mut self,
         peer_id: PeerId,
         command: Command,
@@ -455,6 +501,7 @@ impl SphagnumNode {
         let request = SphagnumRequest {
             command,
             payload: String::new(),
+            is_replication: false, // by default
         };
         let request_id = self
             .swarm
@@ -510,17 +557,6 @@ mod tests {
     }
 
     #[test]
-    fn test_get_data_storage() {
-        let sphagnum = SphagnumNode::new().unwrap();
-        let data_storage = sphagnum.get_data_storage();
-        assert!(data_storage.is_ok(), "get_data_storage should return Ok");
-        assert!(
-            std::ptr::eq(data_storage.unwrap(), &sphagnum.data_storage),
-            "get_data_storage should return reference to internal data_storage"
-        );
-    }
-
-    #[test]
     fn test_get_passport() {
         let sphagnum = SphagnumNode::new().unwrap();
         let passport = sphagnum.get_passport();
@@ -555,7 +591,7 @@ mod tests {
             key: "key".to_string(),
             value: "value".to_string(),
         });
-        let result = sphagnum.send_request_to_sphagnum(peer_id, command);
+        let result = sphagnum.send_request_to_sphagnum(peer_id, command).await;
         assert!(result.is_ok(), "send_request_to_sphagnum should return Ok");
         let request_id = result.unwrap();
         assert!(

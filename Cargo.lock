@@ -2874,6 +2874,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "test-context",
  "tokio",
  "tracing-subscriber",
 ]
@@ -2960,6 +2961,27 @@ name = "tagptr"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b2093cf4c8eb1e67749a6762251bc9cd836b6fc171623bd0a9d324d37af2417"
+
+[[package]]
+name = "test-context"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7b6965c21232186af0092233c18030fe607cfc3960dbabb209325272458eeea"
+dependencies = [
+ "async-trait",
+ "futures",
+ "test-context-macros",
+]
+
+[[package]]
+name = "test-context-macros"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d506c7664333e246f564949bee4ed39062aa0f11918e6f5a95f553cdad65c274"
+dependencies = [
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "thiserror"
