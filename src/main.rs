@@ -1,3 +1,7 @@
+// SphagnumDB
+// © 2025 Anton Anisimov & Contributors
+// Licensed under the MIT License
+
 use libp2p::Multiaddr;
 use sphagnumdb::core::{
     commands::{generic::GenericCommand, string::StringCommand, Command as SphagnumCommand},

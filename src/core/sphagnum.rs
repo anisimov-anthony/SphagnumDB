@@ -106,10 +106,6 @@ impl SphagnumNode {
         Ok(*self.swarm.local_peer_id())
     }
 
-    pub fn get_data_storage(&self) -> Result<&DataStorage, Box<dyn Error>> {
-        Ok(&self.data_storage)
-    }
-
     pub fn get_passport(&self) -> Result<&Passport, Box<dyn Error>> {
         Ok(&self.passport)
     }
@@ -142,6 +138,14 @@ impl SphagnumNode {
                 .send_request(&peer_id, request);
         }
         Ok(())
+    }
+
+    // todo: redesign
+    // warning: no replication, if you want replication - use handle_event
+    pub fn handle_command(&mut self, command: Command) -> Result<CommandResult, Box<dyn Error>> {
+        self.data_storage
+            .handle_command(command)
+            .map_err(|e| Box::new(e) as Box<dyn Error>)
     }
 
     pub async fn handle_event(&mut self) -> Result<(), Box<dyn Error>> {
@@ -549,17 +553,6 @@ mod tests {
             peer_id.unwrap(),
             *sphagnum.swarm.local_peer_id(),
             "peer_id should match swarm's local_peer_id"
-        );
-    }
-
-    #[test]
-    fn test_get_data_storage() {
-        let sphagnum = SphagnumNode::new().unwrap();
-        let data_storage = sphagnum.get_data_storage();
-        assert!(data_storage.is_ok(), "get_data_storage should return Ok");
-        assert!(
-            std::ptr::eq(data_storage.unwrap(), &sphagnum.data_storage),
-            "get_data_storage should return reference to internal data_storage"
         );
     }
 

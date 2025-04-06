@@ -70,7 +70,7 @@ impl StringStore {
 
     fn append(&mut self, key: &str, value: &str) -> Result<u64, Box<dyn Error>> {
         let entry = self.data.entry(key.to_string()).or_default();
-        entry.push_str(&value);
+        entry.push_str(value);
         Ok(entry.len() as u64)
     }
 }
